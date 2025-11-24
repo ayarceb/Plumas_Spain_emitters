@@ -28,7 +28,7 @@ async function main() {
     const map = L.map('map').setView([40.3, -3.7], 6);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
-      .addTo(map);
+        .addTo(map);
 
     const sources = await loadCSV();
 
@@ -38,22 +38,24 @@ async function main() {
             color: '#ff5733',
             weight: 2,
             fillOpacity: 0.8
-        }).addTo(map)
-        .bindPopup(`
-            <strong>${p.name}</strong><br>
-            Tipo: ${p.type}<br>
-            Emisión estimada: ${p.annual} kt/a
-        `);
+        })
+            .addTo(map)
+            .bindPopup(`
+                <strong>${p.name}</strong><br>
+                Tipo: ${p.type}<br>
+                Emisión estimada: ${p.annual} kt/a
+            `);
     });
 
-    const canvas = L.canvasLayer().delegate(this).addTo(map);
-    const ctx = canvas._ctx;
-    const particles = [];
+    //-------------------------------------------------------
+    // PARTICLES INITIALIZATION
+    //-------------------------------------------------------
 
-    const N = 120;  
+    const particles = [];
+    const N = 140;         // particles per source
     const dispersion = 0.003;
-    const speed = 0.002;  
-    const life = 180;     
+    const speed = 0.002;
+    const life = 200;
 
     function initParticles() {
         particles.length = 0;
@@ -72,12 +74,20 @@ async function main() {
 
     initParticles();
 
+    //-------------------------------------------------------
+    // WIND CONTROL
+    //-------------------------------------------------------
+
     let angleWind = 90;
 
     document.getElementById('windAngle').addEventListener('input', e => {
         angleWind = parseInt(e.target.value);
         document.getElementById('windValue').innerText = angleWind + '°';
     });
+
+    //-------------------------------------------------------
+    // PARTICLES UPDATE
+    //-------------------------------------------------------
 
     function advect() {
         const w = windField(angleWind);
@@ -87,6 +97,7 @@ async function main() {
             pt.lon += w.ux * speed + (Math.random() - 0.5) * dispersion;
 
             pt.age += 1;
+
             if (pt.age > life) {
                 pt.age = 0;
                 pt.lat = pt.baseLat;
@@ -95,23 +106,34 @@ async function main() {
         });
     }
 
-    function draw() {
-        const size = map.getSize();
-        ctx.clearRect(0, 0, size.x, size.y);
+    //-------------------------------------------------------
+    // CANVAS LAYER
+    //-------------------------------------------------------
 
-        ctx.fillStyle = 'rgba(0, 120, 255, 0.40)';
+    const canvasLayer = L.canvasLayer().delegate({
+        drawLayer: function (info) {
+            const ctx = info.ctx;
+            const mapInstance = info.map;
 
-        particles.forEach(pt => {
-            const p = map.latLngToContainerPoint([pt.lat, pt.lon]);
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, 1.6, 0, 2 * Math.PI);
-            ctx.fill();
-        });
-    }
+            ctx.clearRect(0, 0, info.canvas.width, info.canvas.height);
+            ctx.fillStyle = 'rgba(0, 120, 255, 0.35)';
+
+            particles.forEach(pt => {
+                const p = mapInstance.latLngToContainerPoint([pt.lat, pt.lon]);
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 1.6, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+        }
+    }).addTo(map);
+
+    //-------------------------------------------------------
+    // ANIMATION LOOP
+    //-------------------------------------------------------
 
     function frame() {
         advect();
-        draw();
+        canvasLayer._redraw();
         requestAnimationFrame(frame);
     }
 

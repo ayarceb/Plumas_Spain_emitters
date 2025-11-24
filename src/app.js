@@ -17,7 +17,8 @@ async function loadCSV() {
 }
 
 function windField(angle) {
-    const rad = angle * Math.PI / 180;
+    // Convert compass degrees (0° = norte, 90° = este) a radianes
+    const rad = (angle + 90) * Math.PI / 180;
     return { ux: Math.cos(rad), uy: Math.sin(rad) };
 }
 
@@ -83,6 +84,8 @@ async function main() {
     document.getElementById("windAngle").addEventListener("input", e => {
         windDeg = parseInt(e.target.value);
         document.getElementById("windValue").innerText = windDeg + "°";
+        // El nuevo ángulo se aplica en el siguiente cuadro; no reiniciamos
+        // partículas para evitar cortes en la emisión continua.
     });
 
     map.addSource("plumes", {

@@ -32,19 +32,6 @@ async function main() {
         bearing: 0
     });
 
-    // globo real
-    map.setProjection({ name: "globe" });
-    map.setTerrain({});
-
-    // controles de zoom
-    map.addControl(
-        new maplibregl.NavigationControl({
-            showCompass: true,
-            showZoom: true
-        }),
-        "top-right"
-    );
-
     await new Promise(r => map.on("load", r));
 
     const sites = await loadCSV();
@@ -66,7 +53,7 @@ async function main() {
         type: "circle",
         source: "plants",
         paint: {
-            "circle-radius": 3,
+            "circle-radius": 6,
             "circle-color": "#ff5533",
             "circle-stroke-width": 1,
             "circle-stroke-color": "#000"
@@ -75,10 +62,10 @@ async function main() {
 
     // Particle system
     const particles = [];
-    const N = 100;
+    const N = 150;
     const dispersion = 0.04;
     const speed = 0.035;
-    const life = 50;
+    const life = 300;
 
     sites.forEach(s => {
         for (let i = 0; i < N; i++) {

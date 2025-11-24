@@ -18,23 +18,17 @@ async function loadCSV() {
 
 function windField(angleDeg) {
     const ang = angleDeg * Math.PI / 180;
-    return { ux: Math.cos(ang), uy: Math.sin(ang) };
+    return {
+        ux: Math.cos(ang),
+        uy: Math.sin(ang)
+    };
 }
 
 async function main() {
+    const map = L.map('map').setView([40.3, -3.7], 6);
 
-    // spherical behaviour
-    const map = L.map('map', {
-        worldCopyJump: true,
-        zoomControl: true,
-        preferCanvas: true
-    }).setView([40.3, -3.7], 6);
-
-    // basemap
-    L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-        { maxZoom: 18 }
-    ).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
+        .addTo(map);
 
     const sources = await loadCSV();
 
@@ -45,17 +39,20 @@ async function main() {
             weight: 2,
             fillOpacity: 0.8
         })
-        .addTo(map)
-        .bindPopup(`
-            <strong>${p.name}</strong><br>
-            Type: ${p.type}<br>
-            Emission: ${p.annual} kt/a
-        `);
+            .addTo(map)
+            .bindPopup(`
+                <strong>${p.name}</strong><br>
+                Tipo: ${p.type}<br>
+                Emisión estimada: ${p.annual} kt/a
+            `);
     });
 
-    // particles
+    //-------------------------------------------------------
+    // PARTICLES INITIALIZATION
+    //-------------------------------------------------------
+
     const particles = [];
-    const N = 140;
+    const N = 140;         // particles per source
     const dispersion = 0.003;
     const speed = 0.002;
     const life = 200;
@@ -77,6 +74,10 @@ async function main() {
 
     initParticles();
 
+    //-------------------------------------------------------
+    // WIND CONTROL
+    //-------------------------------------------------------
+
     let angleWind = 90;
 
     document.getElementById('windAngle').addEventListener('input', e => {
@@ -84,12 +85,17 @@ async function main() {
         document.getElementById('windValue').innerText = angleWind + '°';
     });
 
+    //-------------------------------------------------------
+    // PARTICLES UPDATE
+    //-------------------------------------------------------
+
     function advect() {
         const w = windField(angleWind);
 
         particles.forEach(pt => {
             pt.lat += w.uy * speed + (Math.random() - 0.5) * dispersion;
             pt.lon += w.ux * speed + (Math.random() - 0.5) * dispersion;
+
             pt.age += 1;
 
             if (pt.age > life) {
@@ -99,6 +105,10 @@ async function main() {
             }
         });
     }
+
+    //-------------------------------------------------------
+    // CANVAS LAYER
+    //-------------------------------------------------------
 
     const canvasLayer = L.canvasLayer().delegate({
         drawLayer: function (info) {
@@ -117,10 +127,9 @@ async function main() {
         }
     }).addTo(map);
 
-    // continuous redraw under map movement
-    map.on('move',   () => canvasLayer._redraw());
-    map.on('zoom',   () => canvasLayer._redraw());
-    map.on('moveend',() => canvasLayer._redraw());
+    //-------------------------------------------------------
+    // ANIMATION LOOP
+    //-------------------------------------------------------
 
     function frame() {
         advect();

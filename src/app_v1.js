@@ -17,7 +17,8 @@ async function loadCSV() {
 }
 
 function windField(angleDeg) {
-    const ang = angleDeg * Math.PI / 180;
+    // Usa orientación de brújula: 0° = norte, 90° = este
+    const ang = (angleDeg + 90) * Math.PI / 180;
     return {
         ux: Math.cos(ang),
         uy: Math.sin(ang)
@@ -83,6 +84,13 @@ async function main() {
     document.getElementById('windAngle').addEventListener('input', e => {
         angleWind = parseInt(e.target.value);
         document.getElementById('windValue').innerText = angleWind + '°';
+
+        // Reinicia las partículas para que la nueva orientación sea visible de inmediato
+        particles.forEach(pt => {
+            pt.age = 0;
+            pt.lat = pt.baseLat;
+            pt.lon = pt.baseLon;
+        });
     });
 
     //-------------------------------------------------------

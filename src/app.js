@@ -84,6 +84,7 @@ async function main() {
     document.getElementById("windAngle").addEventListener("input", e => {
         windDeg = parseInt(e.target.value);
         document.getElementById("windValue").innerText = windDeg + "°";
+<<<<<<< HEAD
 
         // Reposiciona partículas a lo largo de la nueva dirección manteniendo
         // distintas edades para que la emisión siga siendo continua tras el
@@ -93,6 +94,13 @@ async function main() {
             p.age = Math.random() * life;
             p.lat = p.baseLat + w.uy * speed * p.age;
             p.lon = p.baseLon + w.ux * speed * p.age;
+=======
+        // Reinicia las partículas para que el nuevo ángulo se perciba al instante
+        particles.forEach(p => {
+            p.age = 0;
+            p.lat = p.baseLat;
+            p.lon = p.baseLon;
+>>>>>>> main
         });
     });
 

@@ -32,6 +32,19 @@ async function main() {
         bearing: 0
     });
 
+    // globo real
+    map.setProjection({ name: "globe" });
+    map.setTerrain({});
+
+    // controles de zoom
+    map.addControl(
+        new maplibregl.NavigationControl({
+            showCompass: true,
+            showZoom: true
+        }),
+        "top-right"
+    );
+
     await new Promise(r => map.on("load", r));
 
     const sites = await loadCSV();

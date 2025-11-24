@@ -16,13 +16,12 @@ async function loadCSV() {
     });
 }
 
-function windVector(lat, lon, angleDeg) {
-    const angle = angleDeg * Math.PI / 180;
-
-    const dx = Math.cos(angle) * 0.4;
-    const dy = Math.sin(angle) * 0.4;
-
-    return [[lat, lon], [lat + dy, lon + dx]];
+function windField(angleDeg) {
+    const ang = angleDeg * Math.PI / 180;
+    return {
+        ux: Math.cos(ang),
+        uy: Math.sin(ang)
+    };
 }
 
 async function main() {
@@ -31,29 +30,14 @@ async function main() {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
       .addTo(map);
 
-    const entries = await loadCSV();
+    const sources = await loadCSV();
 
-    let windAngle = 90;
-    let windLayers = [];
-
-    function drawWind() {
-        windLayers.forEach(l => map.removeLayer(l));
-        windLayers = [];
-
-        entries.forEach(p => {
-            const seg = windVector(p.lat, p.lon, windAngle);
-            const line = L.polyline(seg, { color: '#0080ff', weight: 3 });
-            line.addTo(map);
-            windLayers.push(line);
-        });
-    }
-
-    entries.forEach(p => {
+    sources.forEach(p => {
         L.circleMarker([p.lat, p.lon], {
-            radius: 7,
+            radius: 5,
             color: '#ff5733',
             weight: 2,
-            fillOpacity: 0.7
+            fillOpacity: 0.8
         }).addTo(map)
         .bindPopup(`
             <strong>${p.name}</strong><br>
@@ -62,13 +46,76 @@ async function main() {
         `);
     });
 
-    drawWind();
+    const canvas = L.canvasLayer().delegate(this).addTo(map);
+    const ctx = canvas._ctx;
+    const particles = [];
+
+    const N = 120;  
+    const dispersion = 0.003;
+    const speed = 0.002;  
+    const life = 180;     
+
+    function initParticles() {
+        particles.length = 0;
+        sources.forEach(p => {
+            for (let i = 0; i < N; i++) {
+                particles.push({
+                    lat: p.lat,
+                    lon: p.lon,
+                    baseLat: p.lat,
+                    baseLon: p.lon,
+                    age: Math.random() * life
+                });
+            }
+        });
+    }
+
+    initParticles();
+
+    let angleWind = 90;
 
     document.getElementById('windAngle').addEventListener('input', e => {
-        windAngle = parseInt(e.target.value);
-        document.getElementById('windValue').innerText = windAngle + '°';
-        drawWind();
+        angleWind = parseInt(e.target.value);
+        document.getElementById('windValue').innerText = angleWind + '°';
     });
+
+    function advect() {
+        const w = windField(angleWind);
+
+        particles.forEach(pt => {
+            pt.lat += w.uy * speed + (Math.random() - 0.5) * dispersion;
+            pt.lon += w.ux * speed + (Math.random() - 0.5) * dispersion;
+
+            pt.age += 1;
+            if (pt.age > life) {
+                pt.age = 0;
+                pt.lat = pt.baseLat;
+                pt.lon = pt.baseLon;
+            }
+        });
+    }
+
+    function draw() {
+        const size = map.getSize();
+        ctx.clearRect(0, 0, size.x, size.y);
+
+        ctx.fillStyle = 'rgba(0, 120, 255, 0.40)';
+
+        particles.forEach(pt => {
+            const p = map.latLngToContainerPoint([pt.lat, pt.lon]);
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 1.6, 0, 2 * Math.PI);
+            ctx.fill();
+        });
+    }
+
+    function frame() {
+        advect();
+        draw();
+        requestAnimationFrame(frame);
+    }
+
+    frame();
 }
 
 main();

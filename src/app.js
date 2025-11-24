@@ -84,8 +84,16 @@ async function main() {
     document.getElementById("windAngle").addEventListener("input", e => {
         windDeg = parseInt(e.target.value);
         document.getElementById("windValue").innerText = windDeg + "°";
-        // El nuevo ángulo se aplica en el siguiente cuadro; no reiniciamos
-        // partículas para evitar cortes en la emisión continua.
+
+        // Reposiciona partículas a lo largo de la nueva dirección manteniendo
+        // distintas edades para que la emisión siga siendo continua tras el
+        // cambio de viento.
+        const w = windField(windDeg);
+        particles.forEach(p => {
+            p.age = Math.random() * life;
+            p.lat = p.baseLat + w.uy * speed * p.age;
+            p.lon = p.baseLon + w.ux * speed * p.age;
+        });
     });
 
     map.addSource("plumes", {

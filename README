@@ -1,0 +1,10 @@
+# Mapa Industrial de España
+
+Mapa interactivo con 20 instalaciones industriales y un campo de viento ajustable.
+
+Tecnología:
+- Leaflet.js
+- CSV sencillo para los datos
+
+Despliegue:
+Funciona en GitHub Pages sin backend.

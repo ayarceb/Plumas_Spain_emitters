@@ -17,7 +17,6 @@ async function loadCSV() {
 }
 
 function windField(angle) {
-    // Convert compass degrees (0° = norte, 90° = este) a radianes
     const rad = (angle + 90) * Math.PI / 180;
     return { ux: Math.cos(rad), uy: Math.sin(rad) };
 }
@@ -103,8 +102,15 @@ async function main() {
 
     document.getElementById("windAngle").addEventListener("input", e => {
         windDeg = parseInt(e.target.value);
-        windValueEl.innerText = windDeg + "°";
-        realignParticles();
+        document.getElementById("windValue").innerText = windDeg + "°";
+
+        // Realign particles smoothly according to the new wind direction
+        const w = windField(windDeg);
+        particles.forEach(p => {
+            p.age = Math.random() * life;
+            p.lat = p.baseLat + w.uy * speed * p.age;
+            p.lon = p.baseLon + w.ux * speed * p.age;
+        });
     });
 
     map.addSource("plumes", {

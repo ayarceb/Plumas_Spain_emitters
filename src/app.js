@@ -23,9 +23,15 @@ function windField(angle) {
 }
 
 async function main() {
+    const maptilerKey = (window.MAPTILER_KEY || "").trim();
+    const hasMaptilerKey = maptilerKey && maptilerKey !== "get_your_own_D6rA4zTHduk6KOKTXzGB";
+    const styleUrl = hasMaptilerKey
+        ? `https://api.maptiler.com/maps/topo-v2/style.json?key=${maptilerKey}`
+        : "https://demotiles.maplibre.org/style.json";
+
     const map = new maplibregl.Map({
         container: "map",
-        style: "https://api.maptiler.com/maps/topo-v2/style.json?key=get_your_own_D6rA4zTHduk6KOKTXzGB",
+        style: styleUrl,
         projection: "globe",
         center: [-3.7, 40.3],
         zoom: 4,
@@ -35,13 +41,15 @@ async function main() {
 
     await new Promise(r => map.on("load", r));
 
-    map.addSource("terrain-dem", {
-        type: "raster-dem",
-        url: "https://api.maptiler.com/tiles/terrain-rgb/tiles.json?key=get_your_own_D6rA4zTHduk6KOKTXzGB",
-        tileSize: 512,
-        maxzoom: 14
-    });
-    map.setTerrain({ source: "terrain-dem", exaggeration: 1.2 });
+    if (hasMaptilerKey) {
+        map.addSource("terrain-dem", {
+            type: "raster-dem",
+            url: `https://api.maptiler.com/tiles/terrain-rgb/tiles.json?key=${HaQgQYUfDut71HbV23Vr}`,
+            tileSize: 512,
+            maxzoom: 14
+        });
+        map.setTerrain({ source: "terrain-dem", exaggeration: 1.2 });
+    }
 
     const sites = await loadCSV();
 

@@ -23,15 +23,36 @@ function windField(angle) {
 }
 
 async function main() {
-    const maptilerKey = (window.MAPTILER_KEY || "").trim();
-    const hasMaptilerKey = maptilerKey && maptilerKey !== "get_your_own_D6rA4zTHduk6KOKTXzGB";
-    const styleUrl = hasMaptilerKey
-        ? `https://api.maptiler.com/maps/topo-v2/style.json?key=${maptilerKey}`
-        : "https://demotiles.maplibre.org/style.json";
+    const style = {
+        version: 8,
+        name: "OpenTopoMap",
+        sources: {
+            opentopo: {
+                type: "raster",
+                tiles: [
+                    "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
+                    "https://b.tile.opentopomap.org/{z}/{x}/{y}.png",
+                    "https://c.tile.opentopomap.org/{z}/{x}/{y}.png"
+                ],
+                tileSize: 256,
+                attribution:
+                    "© OpenTopoMap (CC-BY-SA), © OpenStreetMap contributors"
+            }
+        },
+        layers: [
+            {
+                id: "opentopo",
+                type: "raster",
+                source: "opentopo",
+                minzoom: 0,
+                maxzoom: 17
+            }
+        ]
+    };
 
     const map = new maplibregl.Map({
         container: "map",
-        style: styleUrl,
+        style,
         projection: "globe",
         center: [-3.7, 40.3],
         zoom: 4,
@@ -70,7 +91,7 @@ async function main() {
         type: "circle",
         source: "plants",
         paint: {
-    "circle-radius": 1.8,
+            "circle-radius": 1.8,
             "circle-color": "#ff5533",
             "circle-stroke-width": 0.6,
             "circle-stroke-color": "#000"

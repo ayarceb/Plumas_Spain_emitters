@@ -17,7 +17,6 @@ async function loadCSV() {
 }
 
 function windField(angle) {
-    // Convert compass degrees (0° = norte, 90° = este) a radianes
     const rad = (angle + 90) * Math.PI / 180;
     return { ux: Math.cos(rad), uy: Math.sin(rad) };
 }
@@ -54,7 +53,7 @@ async function main() {
         type: "circle",
         source: "plants",
         paint: {
-            "circle-radius": 3,
+            "circle-radius": 4,
             "circle-color": "#ff5533",
             "circle-stroke-width": 1,
             "circle-stroke-color": "#000"
@@ -103,8 +102,15 @@ async function main() {
 
     document.getElementById("windAngle").addEventListener("input", e => {
         windDeg = parseInt(e.target.value);
-        windValueEl.innerText = windDeg + "°";
-        realignParticles();
+        document.getElementById("windValue").innerText = windDeg + "°";
+
+        // Realign particles smoothly according to the new wind direction
+        const w = windField(windDeg);
+        particles.forEach(p => {
+            p.age = Math.random() * life;
+            p.lat = p.baseLat + w.uy * speed * p.age;
+            p.lon = p.baseLon + w.ux * speed * p.age;
+        });
     });
 
     // Prebuild plume features so we can reuse the same objects and avoid per-frame allocations.
@@ -129,7 +135,7 @@ async function main() {
         source: "plumes",
         paint: {
             "circle-radius": 2,
-            "circle-color": "rgba(255, 140, 0, 0.75)"
+            "circle-color": "rgba(0, 200, 0, 0.7)"
         }
     });
 

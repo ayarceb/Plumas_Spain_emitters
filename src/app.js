@@ -17,14 +17,42 @@ async function loadCSV() {
 }
 
 function windField(angle) {
-    const rad = angle * Math.PI / 180;
+    // Convert compass degrees (0° = norte, 90° = este) a radianes
+    const rad = (angle + 90) * Math.PI / 180;
     return { ux: Math.cos(rad), uy: Math.sin(rad) };
 }
 
 async function main() {
+    const style = {
+        version: 8,
+        name: "OpenTopoMap",
+        sources: {
+            opentopo: {
+                type: "raster",
+                tiles: [
+                    "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
+                    "https://b.tile.opentopomap.org/{z}/{x}/{y}.png",
+                    "https://c.tile.opentopomap.org/{z}/{x}/{y}.png"
+                ],
+                tileSize: 256,
+                attribution:
+                    "© OpenTopoMap (CC-BY-SA), © OpenStreetMap contributors"
+            }
+        },
+        layers: [
+            {
+                id: "opentopo",
+                type: "raster",
+                source: "opentopo",
+                minzoom: 0,
+                maxzoom: 17
+            }
+        ]
+    };
+
     const map = new maplibregl.Map({
         container: "map",
-        style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+        style,
         projection: "globe",
         center: [-3.7, 40.3],
         zoom: 4,
@@ -53,9 +81,9 @@ async function main() {
         type: "circle",
         source: "plants",
         paint: {
-            "circle-radius": 6,
+            "circle-radius": 1.8,
             "circle-color": "#ff5533",
-            "circle-stroke-width": 1,
+            "circle-stroke-width": 0.6,
             "circle-stroke-color": "#000"
         }
     });
@@ -65,7 +93,7 @@ async function main() {
     const N = 150;
     const dispersion = 0.04;
     const speed = 0.035;
-    const life = 300;
+    const life = 140;
 
     sites.forEach(s => {
         for (let i = 0; i < N; i++) {
@@ -80,14 +108,47 @@ async function main() {
     });
 
     let windDeg = 90;
+
+    function realignParticles() {
+        const w = windField(windDeg);
+
+        particles.forEach(p => {
+            // Conserva la edad para que la emisión siga siendo continua y
+            // recoloca cada partícula en la nueva dirección, añadiendo una
+            // ligera desviación lateral.
+            const lateral = (Math.random() - 0.5) * dispersion * p.age * 0.2;
+            const perpX = -w.uy;
+            const perpY = w.ux;
+
+            p.lat = p.baseLat + w.uy * speed * p.age + perpY * lateral;
+            p.lon = p.baseLon + w.ux * speed * p.age + perpX * lateral;
+        });
+    }
+
+    const windValueEl = document.getElementById("windValue");
+    windValueEl.innerText = windDeg + "°";
+
     document.getElementById("windAngle").addEventListener("input", e => {
         windDeg = parseInt(e.target.value);
-        document.getElementById("windValue").innerText = windDeg + "°";
+        windValueEl.innerText = windDeg + "°";
+        realignParticles();
     });
+
+    // Prebuild plume features so we can reuse the same objects and avoid per-frame allocations.
+    const plumeFeatures = particles.map(p => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [p.lon, p.lat] },
+        properties: { age: p.age }
+    }));
+
+    const plumeGeoJSON = {
+        type: "FeatureCollection",
+        features: plumeFeatures
+    };
 
     map.addSource("plumes", {
         type: "geojson",
-        data: { type: "FeatureCollection", features: [] }
+        data: plumeGeoJSON
     });
 
     map.addLayer({
@@ -96,7 +157,17 @@ async function main() {
         source: "plumes",
         paint: {
             "circle-radius": 2,
-            "circle-color": "rgba(0,150,255,0.5)"
+            "circle-color": "rgba(255, 128, 0, 0.78)",
+            "circle-opacity": [
+                "interpolate",
+                ["linear"],
+                ["get", "age"],
+                0,
+                0.95,
+                life,
+                0
+            ],
+            "circle-blur": 0.15
         }
     });
 
@@ -116,18 +187,23 @@ async function main() {
     }
 
     function updatePlumes() {
-        map.getSource("plumes").setData({
-            type: "FeatureCollection",
-            features: particles.map(p => ({
-                type: "Feature",
-                geometry: { type: "Point", coordinates: [p.lon, p.lat] }
-            }))
-        });
+        for (let i = 0; i < particles.length; i++) {
+            plumeFeatures[i].geometry.coordinates[0] = particles[i].lon;
+            plumeFeatures[i].geometry.coordinates[1] = particles[i].lat;
+            plumeFeatures[i].properties.age = particles[i].age;
+        }
+        map.getSource("plumes").setData(plumeGeoJSON);
     }
 
-    function animate() {
+    let lastUpdate = 0;
+    const updateInterval = 40; // ~25fps to reduce load while keeping motion smooth
+
+    function animate(timestamp = 0) {
         stepParticles();
-        updatePlumes();
+        if (timestamp - lastUpdate >= updateInterval) {
+            updatePlumes();
+            lastUpdate = timestamp;
+        }
         requestAnimationFrame(animate);
     }
 

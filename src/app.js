@@ -25,7 +25,7 @@ function windField(angle) {
 async function main() {
     const map = new maplibregl.Map({
         container: "map",
-        style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+        style: "https://api.maptiler.com/maps/topo-v2/style.json?key=get_your_own_D6rA4zTHduk6KOKTXzGB",
         projection: "globe",
         center: [-3.7, 40.3],
         zoom: 4,
@@ -34,6 +34,14 @@ async function main() {
     });
 
     await new Promise(r => map.on("load", r));
+
+    map.addSource("terrain-dem", {
+        type: "raster-dem",
+        url: "https://api.maptiler.com/tiles/terrain-rgb/tiles.json?key=get_your_own_D6rA4zTHduk6KOKTXzGB",
+        tileSize: 512,
+        maxzoom: 14
+    });
+    map.setTerrain({ source: "terrain-dem", exaggeration: 1.2 });
 
     const sites = await loadCSV();
 
@@ -54,9 +62,9 @@ async function main() {
         type: "circle",
         source: "plants",
         paint: {
-            "circle-radius": 3,
+            "circle-radius": 1.8,
             "circle-color": "#ff5533",
-            "circle-stroke-width": 1,
+            "circle-stroke-width": 0.6,
             "circle-stroke-color": "#000"
         }
     });
@@ -66,7 +74,7 @@ async function main() {
     const N = 150;
     const dispersion = 0.04;
     const speed = 0.035;
-    const life = 150;
+    const life = 90;
 
     sites.forEach(s => {
         for (let i = 0; i < N; i++) {

@@ -103,7 +103,7 @@ async function main() {
     const N = 150;
     const dispersion = 0.04;
     const speed = 0.035;
-    const life = 90;
+    const life = 140;
 
     sites.forEach(s => {
         for (let i = 0; i < N; i++) {
@@ -147,7 +147,8 @@ async function main() {
     // Prebuild plume features so we can reuse the same objects and avoid per-frame allocations.
     const plumeFeatures = particles.map(p => ({
         type: "Feature",
-        geometry: { type: "Point", coordinates: [p.lon, p.lat] }
+        geometry: { type: "Point", coordinates: [p.lon, p.lat] },
+        properties: { age: p.age }
     }));
 
     const plumeGeoJSON = {
@@ -166,7 +167,17 @@ async function main() {
         source: "plumes",
         paint: {
             "circle-radius": 2,
-            "circle-color": "rgba(255, 128, 0, 0.78)"
+            "circle-color": "rgba(255, 128, 0, 0.78)",
+            "circle-opacity": [
+                "interpolate",
+                ["linear"],
+                ["get", "age"],
+                0,
+                0.95,
+                life,
+                0
+            ],
+            "circle-blur": 0.15
         }
     });
 
@@ -189,6 +200,7 @@ async function main() {
         for (let i = 0; i < particles.length; i++) {
             plumeFeatures[i].geometry.coordinates[0] = particles[i].lon;
             plumeFeatures[i].geometry.coordinates[1] = particles[i].lat;
+            plumeFeatures[i].properties.age = particles[i].age;
         }
         map.getSource("plumes").setData(plumeGeoJSON);
     }

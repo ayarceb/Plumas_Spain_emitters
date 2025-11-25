@@ -113,9 +113,20 @@ async function main() {
         });
     });
 
+    // Prebuild plume features so we can reuse the same objects and avoid per-frame allocations.
+    const plumeFeatures = particles.map(p => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [p.lon, p.lat] }
+    }));
+
+    const plumeGeoJSON = {
+        type: "FeatureCollection",
+        features: plumeFeatures
+    };
+
     map.addSource("plumes", {
         type: "geojson",
-        data: { type: "FeatureCollection", features: [] }
+        data: plumeGeoJSON
     });
 
     map.addLayer({
@@ -144,18 +155,22 @@ async function main() {
     }
 
     function updatePlumes() {
-        map.getSource("plumes").setData({
-            type: "FeatureCollection",
-            features: particles.map(p => ({
-                type: "Feature",
-                geometry: { type: "Point", coordinates: [p.lon, p.lat] }
-            }))
-        });
+        for (let i = 0; i < particles.length; i++) {
+            plumeFeatures[i].geometry.coordinates[0] = particles[i].lon;
+            plumeFeatures[i].geometry.coordinates[1] = particles[i].lat;
+        }
+        map.getSource("plumes").setData(plumeGeoJSON);
     }
 
-    function animate() {
+    let lastUpdate = 0;
+    const updateInterval = 40; // ~25fps to reduce load while keeping motion smooth
+
+    function animate(timestamp = 0) {
         stepParticles();
-        updatePlumes();
+        if (timestamp - lastUpdate >= updateInterval) {
+            updatePlumes();
+            lastUpdate = timestamp;
+        }
         requestAnimationFrame(animate);
     }
 

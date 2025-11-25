@@ -17,7 +17,8 @@ async function loadCSV() {
 }
 
 function windField(angle) {
-    const rad = angle * Math.PI / 180;
+    // Convert compass degrees (0° = norte, 90° = este) a radianes
+    const rad = (angle + 90) * Math.PI / 180;
     return { ux: Math.cos(rad), uy: Math.sin(rad) };
 }
 
@@ -80,9 +81,30 @@ async function main() {
     });
 
     let windDeg = 90;
+
+    function realignParticles() {
+        const w = windField(windDeg);
+
+        particles.forEach(p => {
+            // Conserva la edad para que la emisión siga siendo continua y
+            // recoloca cada partícula en la nueva dirección, añadiendo una
+            // ligera desviación lateral.
+            const lateral = (Math.random() - 0.5) * dispersion * p.age * 0.2;
+            const perpX = -w.uy;
+            const perpY = w.ux;
+
+            p.lat = p.baseLat + w.uy * speed * p.age + perpY * lateral;
+            p.lon = p.baseLon + w.ux * speed * p.age + perpX * lateral;
+        });
+    }
+
+    const windValueEl = document.getElementById("windValue");
+    windValueEl.innerText = windDeg + "°";
+
     document.getElementById("windAngle").addEventListener("input", e => {
         windDeg = parseInt(e.target.value);
-        document.getElementById("windValue").innerText = windDeg + "°";
+        windValueEl.innerText = windDeg + "°";
+        realignParticles();
     });
 
     map.addSource("plumes", {
@@ -96,7 +118,7 @@ async function main() {
         source: "plumes",
         paint: {
             "circle-radius": 2,
-            "circle-color": "rgba(0,150,255,0.5)"
+            "circle-color": "rgba(0,180,0,0.55)"
         }
     });
 

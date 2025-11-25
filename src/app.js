@@ -44,7 +44,7 @@ async function main() {
     if (hasMaptilerKey) {
         map.addSource("terrain-dem", {
             type: "raster-dem",
-            url: `https://api.maptiler.com/tiles/terrain-rgb/tiles.json?key=${HaQgQYUfDut71HbV23Vr}`,
+            url: `https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=${HaQgQYUfDut71HbV23Vr}`,
             tileSize: 512,
             maxzoom: 14
         });
@@ -70,7 +70,7 @@ async function main() {
         type: "circle",
         source: "plants",
         paint: {
-            "circle-radius": 1.8,
+    "circle-radius": 1.8,
             "circle-color": "#ff5533",
             "circle-stroke-width": 0.6,
             "circle-stroke-color": "#000"

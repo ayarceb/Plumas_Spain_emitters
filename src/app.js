@@ -53,7 +53,7 @@ async function main() {
         type: "circle",
         source: "plants",
         paint: {
-            "circle-radius": 6,
+            "circle-radius": 4,
             "circle-color": "#ff5533",
             "circle-stroke-width": 1,
             "circle-stroke-color": "#000"
@@ -65,7 +65,7 @@ async function main() {
     const N = 150;
     const dispersion = 0.04;
     const speed = 0.035;
-    const life = 300;
+    const life = 150;
 
     sites.forEach(s => {
         for (let i = 0; i < N; i++) {
@@ -80,6 +80,26 @@ async function main() {
     });
 
     let windDeg = 90;
+
+    function realignParticles() {
+        const w = windField(windDeg);
+
+        particles.forEach(p => {
+            // Conserva la edad para que la emisión siga siendo continua y
+            // recoloca cada partícula en la nueva dirección, añadiendo una
+            // ligera desviación lateral.
+            const lateral = (Math.random() - 0.5) * dispersion * p.age * 0.2;
+            const perpX = -w.uy;
+            const perpY = w.ux;
+
+            p.lat = p.baseLat + w.uy * speed * p.age + perpY * lateral;
+            p.lon = p.baseLon + w.ux * speed * p.age + perpX * lateral;
+        });
+    }
+
+    const windValueEl = document.getElementById("windValue");
+    windValueEl.innerText = windDeg + "°";
+
     document.getElementById("windAngle").addEventListener("input", e => {
         windDeg = parseInt(e.target.value);
         document.getElementById("windValue").innerText = windDeg + "°";
@@ -104,7 +124,7 @@ async function main() {
         source: "plumes",
         paint: {
             "circle-radius": 2,
-            "circle-color": "rgba(0,150,255,0.5)"
+            "circle-color": "rgba(0, 200, 0, 0.7)"
         }
     });
 

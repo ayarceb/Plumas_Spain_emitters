@@ -54,7 +54,7 @@ async function main() {
         type: "circle",
         source: "plants",
         paint: {
-            "circle-radius": 6,
+            "circle-radius": 4,
             "circle-color": "#ff5533",
             "circle-stroke-width": 1,
             "circle-stroke-color": "#000"
@@ -66,7 +66,7 @@ async function main() {
     const N = 150;
     const dispersion = 0.04;
     const speed = 0.035;
-    const life = 300;
+    const life = 150;
 
     sites.forEach(s => {
         for (let i = 0; i < N; i++) {
@@ -118,7 +118,7 @@ async function main() {
         source: "plumes",
         paint: {
             "circle-radius": 2,
-            "circle-color": "rgba(0,180,0,0.55)"
+            "circle-color": "rgba(0, 200, 0, 0.7)"
         }
     });
 

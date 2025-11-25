@@ -23,36 +23,40 @@ function windField(angle) {
 }
 
 async function main() {
-    const style = {
-        version: 8,
-        name: "OpenTopoMap",
-        sources: {
-            opentopo: {
-                type: "raster",
-                tiles: [
-                    "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
-                    "https://b.tile.opentopomap.org/{z}/{x}/{y}.png",
-                    "https://c.tile.opentopomap.org/{z}/{x}/{y}.png"
-                ],
-                tileSize: 256,
-                attribution:
-                    "© OpenTopoMap (CC-BY-SA), © OpenStreetMap contributors"
-            }
-        },
-        layers: [
-            {
-                id: "opentopo",
-                type: "raster",
-                source: "opentopo",
-                minzoom: 0,
-                maxzoom: 17
-            }
-        ]
-    };
+    // Allow MapTiler topo+terrain if a key is available; otherwise fall back to
+    // a keyless OpenTopoMap raster style so the map always loads.
+    const hasMaptilerKey = typeof window !== "undefined" && Boolean(window.MAPTILER_KEY);
 
     const map = new maplibregl.Map({
         container: "map",
-        style,
+        style: hasMaptilerKey
+            ? `https://api.maptiler.com/maps/topo-v2/style.json?key=${window.MAPTILER_KEY}`
+            : {
+                  version: 8,
+                  name: "OpenTopoMap",
+                  sources: {
+                      opentopo: {
+                          type: "raster",
+                          tiles: [
+                              "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
+                              "https://b.tile.opentopomap.org/{z}/{x}/{y}.png",
+                              "https://c.tile.opentopomap.org/{z}/{x}/{y}.png"
+                          ],
+                          tileSize: 256,
+                          attribution:
+                              "© OpenTopoMap (CC-BY-SA), © OpenStreetMap contributors"
+                      }
+                  },
+                  layers: [
+                      {
+                          id: "opentopo",
+                          type: "raster",
+                          source: "opentopo",
+                          minzoom: 0,
+                          maxzoom: 17
+                      }
+                  ]
+              },
         projection: "globe",
         center: [-3.7, 40.3],
         zoom: 4,

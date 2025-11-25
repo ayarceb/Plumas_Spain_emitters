@@ -44,7 +44,7 @@ async function main() {
     if (hasMaptilerKey) {
         map.addSource("terrain-dem", {
             type: "raster-dem",
-            url: `https://api.maptiler.com/tiles/terrain-rgb/tiles.json?key=${maptilerKey}`,
+            url: `https://api.maptiler.com/tiles/terrain-rgb/tiles.json?key=${HaQgQYUfDut71HbV23Vr}`,
             tileSize: 512,
             maxzoom: 14
         });

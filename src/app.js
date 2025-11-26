@@ -113,16 +113,18 @@ async function loadNetcdfWindSeries() {
         console.warn("NetCDF support not available; skipping NetCDF wind series.");
         return null;
     }
+    const netcdfPath = "../data/SAUPUNTA_ERA5-lvl-20210101t1300.nc";
+
     try {
-        const response = await fetch("../data/wind.nc");
+        const response = await fetch(netcdfPath);
         if (!response.ok) {
-            throw new Error(`NetCDF fetch failed: ${response.status}`);
+            throw new Error(`NetCDF fetch failed (${netcdfPath}): ${response.status}`);
         }
         const buffer = await response.arrayBuffer();
         const reader = new netcdfjs.NetCDFReader(new DataView(buffer));
 
-        const uName = findVariable(reader, ["u10", "u_component", "u"]); // fallback options
-        const vName = findVariable(reader, ["v10", "v_component", "v"]);
+        const uName = findVariable(reader, ["u", "u10", "u_component"]); // prefer plain u/v first
+        const vName = findVariable(reader, ["v", "v10", "v_component"]);
         if (!uName || !vName) {
             console.warn("No se encontraron variables u/v en el NetCDF.");
             return null;

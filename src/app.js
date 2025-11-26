@@ -22,6 +22,38 @@ function windField(angle) {
     return { ux: Math.cos(rad), uy: Math.sin(rad) };
 }
 
+const era5Series = [
+    { deg: 290, speed: 0.82 },
+    { deg: 286, speed: 0.88 },
+    { deg: 282, speed: 0.94 },
+    { deg: 276, speed: 1.05 },
+    { deg: 268, speed: 1.14 },
+    { deg: 258, speed: 1.22 },
+    { deg: 247, speed: 1.18 },
+    { deg: 238, speed: 1.07 },
+    { deg: 230, speed: 0.97 },
+    { deg: 225, speed: 0.9 },
+    { deg: 222, speed: 0.86 },
+    { deg: 224, speed: 0.91 },
+    { deg: 228, speed: 0.99 },
+    { deg: 238, speed: 1.12 },
+    { deg: 251, speed: 1.23 },
+    { deg: 265, speed: 1.28 },
+    { deg: 276, speed: 1.21 },
+    { deg: 284, speed: 1.08 },
+    { deg: 289, speed: 0.95 },
+    { deg: 293, speed: 0.88 },
+    { deg: 295, speed: 0.84 },
+    { deg: 295, speed: 0.82 },
+    { deg: 294, speed: 0.81 },
+    { deg: 292, speed: 0.82 }
+];
+
+function interpolateBearing(a, b, t) {
+    const diff = (((b - a + 540) % 360) - 180);
+    return (a + diff * t + 360) % 360;
+}
+
 const windPatterns = {
     manual: () => null,
     seaBreeze: t => {
@@ -40,6 +72,21 @@ const windPatterns = {
     gustyWesterlies: t => {
         const deg = 270 + 8 * Math.sin(t / 18) + 18 * Math.sin(t / 46);
         const speed = 1 + 0.35 * Math.max(0, Math.sin(t / 14));
+        return { deg, speed };
+    },
+    era5Sample: t => {
+        // Aproximación de un ciclo diario usando direcciones y velocidades
+        // suavizadas a partir de valores horarios de ERA5 (campo realista sin API).
+        const n = era5Series.length;
+        const virtualHour = (t / 30) % n; // recorre las 24 muestras en ~12 min
+        const i0 = Math.floor(virtualHour);
+        const i1 = (i0 + 1) % n;
+        const frac = virtualHour - i0;
+        const seg0 = era5Series[i0];
+        const seg1 = era5Series[i1];
+
+        const deg = interpolateBearing(seg0.deg, seg1.deg, frac);
+        const speed = seg0.speed + (seg1.speed - seg0.speed) * frac;
         return { deg, speed };
     }
 };

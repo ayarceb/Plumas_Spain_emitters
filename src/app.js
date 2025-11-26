@@ -108,9 +108,63 @@ function averageUVAtTime(reader, uVar, vVar, timeIdx, levelIdx) {
     return count ? { u: sumU / count, v: sumV / count } : { u: 0, v: 0 };
 }
 
-async function loadNetcdfWindSeries() {
-    if (typeof netcdfjs === "undefined" || !netcdfjs.NetCDFReader) {
-        console.warn("NetCDF support not available; skipping NetCDF wind series.");
+function getNetcdfReaderCtor() {
+    if (typeof netcdfjs !== "undefined") {
+        if (typeof netcdfjs.NetCDFReader === "function") return netcdfjs.NetCDFReader;
+        if (typeof netcdfjs === "function") return netcdfjs;
+    }
+    if (typeof window !== "undefined" && typeof window.NetCDFReader === "function") {
+        return window.NetCDFReader;
+    }
+    return null;
+}
+
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = src;
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error(`No se pudo cargar ${src}`));
+        document.head.appendChild(script);
+    });
+}
+
+async function ensureNetcdfReader(statusEl) {
+    let NetcdfReader = getNetcdfReaderCtor();
+    if (NetcdfReader) return NetcdfReader;
+
+    const fallbackUrls = [
+        "./lib/netcdfjs.min.js",
+        "https://cdn.jsdelivr.net/npm/netcdfjs@1.1.0/dist/netcdfjs.min.js",
+        "https://unpkg.com/netcdfjs@1.1.0/dist/netcdfjs.min.js",
+        "https://raw.githubusercontent.com/cheminfo/netcdfjs/master/dist/netcdfjs.min.js"
+    ];
+
+    for (const url of fallbackUrls) {
+        try {
+            if (statusEl) statusEl.textContent = `Cargando netcdfjs… (${url})`;
+            await loadScript(url);
+            NetcdfReader = getNetcdfReaderCtor();
+            if (NetcdfReader) {
+                if (statusEl) statusEl.textContent = "netcdfjs listo";
+                return NetcdfReader;
+            }
+        } catch (err) {
+            console.warn(`No se pudo cargar ${url}:`, err);
+        }
+    }
+
+    if (statusEl) {
+        statusEl.textContent = "netcdfjs no disponible";
+    }
+    return null;
+}
+
+async function loadNetcdfWindSeries(statusEl) {
+    const NetcdfReader = await ensureNetcdfReader(statusEl);
+    if (!NetcdfReader) {
+        console.info("Serie NetCDF omitida: faltó netcdfjs (añádelo en src/lib/ o habilita Internet/CDN).");
         return null;
     }
     const netcdfPath = "../data/SAUPUNTA_ERA5-lvl-20210101t1300.nc";
@@ -121,7 +175,7 @@ async function loadNetcdfWindSeries() {
             throw new Error(`NetCDF fetch failed (${netcdfPath}): ${response.status}`);
         }
         const buffer = await response.arrayBuffer();
-        const reader = new netcdfjs.NetCDFReader(new DataView(buffer));
+        const reader = new NetcdfReader(new DataView(buffer));
 
         const uName = findVariable(reader, ["u", "u10", "u_component"]); // prefer plain u/v first
         const vName = findVariable(reader, ["v", "v10", "v_component"]);
@@ -227,7 +281,8 @@ const windPatterns = {
     }
 };
 
-const netcdfSeriesPromise = loadNetcdfWindSeries();
+const netcdfStatusEl = typeof document !== "undefined" ? document.getElementById("netcdfStatus") : null;
+const netcdfSeriesPromise = loadNetcdfWindSeries(netcdfStatusEl);
 
 async function main() {
     // Allow MapTiler topo+terrain if a key is available; otherwise fall back to

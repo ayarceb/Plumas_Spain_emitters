@@ -108,9 +108,48 @@ function averageUVAtTime(reader, uVar, vVar, timeIdx, levelIdx) {
     return count ? { u: sumU / count, v: sumV / count } : { u: 0, v: 0 };
 }
 
+function getNetcdfReaderCtor() {
+    if (typeof netcdfjs !== "undefined") {
+        if (typeof netcdfjs.NetCDFReader === "function") return netcdfjs.NetCDFReader;
+        if (typeof netcdfjs === "function") return netcdfjs;
+    }
+    if (typeof window !== "undefined" && typeof window.NetCDFReader === "function") {
+        return window.NetCDFReader;
+    }
+    return null;
+}
+
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = src;
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error(`No se pudo cargar ${src}`));
+        document.head.appendChild(script);
+    });
+}
+
 async function loadNetcdfWindSeries() {
-    if (typeof netcdfjs === "undefined" || !netcdfjs.NetCDFReader) {
-        console.warn("NetCDF support not available; skipping NetCDF wind series.");
+    let NetcdfReader = getNetcdfReaderCtor();
+    if (!NetcdfReader) {
+        try {
+            await loadScript("./lib/netcdfjs.min.js");
+        } catch (err) {
+            console.warn("Fallback local netcdfjs load failed:", err);
+        }
+        NetcdfReader = getNetcdfReaderCtor();
+    }
+    if (!NetcdfReader) {
+        try {
+            await loadScript("https://cdn.jsdelivr.net/npm/netcdfjs@1.1.0/dist/netcdfjs.min.js");
+        } catch (err) {
+            console.warn("CDN netcdfjs load failed:", err);
+        }
+        NetcdfReader = getNetcdfReaderCtor();
+    }
+    if (!NetcdfReader) {
+        console.warn("NetCDF no disponible: incluye netcdfjs.min.js (local en ./lib/ o vía CDN) para habilitar la serie de viento.");
         return null;
     }
     const netcdfPath = "../data/SAUPUNTA_ERA5-lvl-20210101t1300.nc";
@@ -121,7 +160,7 @@ async function loadNetcdfWindSeries() {
             throw new Error(`NetCDF fetch failed (${netcdfPath}): ${response.status}`);
         }
         const buffer = await response.arrayBuffer();
-        const reader = new netcdfjs.NetCDFReader(new DataView(buffer));
+        const reader = new NetcdfReader(new DataView(buffer));
 
         const uName = findVariable(reader, ["u", "u10", "u_component"]); // prefer plain u/v first
         const vName = findVariable(reader, ["v", "v10", "v_component"]);

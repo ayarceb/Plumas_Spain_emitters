@@ -156,7 +156,7 @@ async function ensureNetcdfReader(statusEl) {
     }
 
     if (statusEl) {
-        statusEl.textContent = "netcdfjs no disponible";
+        statusEl.textContent = "netcdfjs no disponible (añade lib/netcdfjs.min.js)";
     }
     return null;
 }
@@ -167,14 +167,40 @@ async function loadNetcdfWindSeries(statusEl) {
         console.info("Serie NetCDF omitida: faltó netcdfjs (añádelo en src/lib/ o habilita Internet/CDN).");
         return null;
     }
-    const netcdfPath = "../data/SAUPUNTA_ERA5-lvl-20210101t1300.nc";
+
+    // Try multiple relative paths so the dataset is found whether the page is served
+    // from /src, the repo root, or a bundled output directory.
+    const netcdfCandidates = [
+        "../data/SAUPUNTA_ERA5-lvl-20210101t1300.nc",
+        "./data/SAUPUNTA_ERA5-lvl-20210101t1300.nc",
+        "/data/SAUPUNTA_ERA5-lvl-20210101t1300.nc"
+    ];
+
+    let buffer = null;
+    let netcdfPath = null;
 
     try {
-        const response = await fetch(netcdfPath);
-        if (!response.ok) {
-            throw new Error(`NetCDF fetch failed (${netcdfPath}): ${response.status}`);
+        for (const candidate of netcdfCandidates) {
+            const response = await fetch(candidate);
+            if (!response.ok) {
+                console.warn(`NetCDF no encontrado en ${candidate} (${response.status}).`);
+                continue;
+            }
+            buffer = await response.arrayBuffer();
+            netcdfPath = candidate;
+            break;
         }
-        const buffer = await response.arrayBuffer();
+
+        if (!buffer) {
+            const msg = "NetCDF no disponible en data/ (añade SAUPUNTA_ERA5-lvl-20210101t1300.nc)";
+            if (statusEl) statusEl.textContent = msg;
+            throw new Error("NetCDF file missing in /data paths");
+        }
+
+        if (statusEl && netcdfPath) {
+            statusEl.textContent = `NetCDF listo (${netcdfPath})`;
+        }
+
         const reader = new NetcdfReader(new DataView(buffer));
 
         const uName = findVariable(reader, ["u", "u10", "u_component"]); // prefer plain u/v first

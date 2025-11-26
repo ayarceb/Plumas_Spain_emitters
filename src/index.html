@@ -14,12 +14,26 @@
     Viento:
     <input type="range" id="windAngle" min="0" max="360" value="90">
     <span id="windValue">90°</span>
+    <label for="windPattern">Patrón:</label>
+    <select id="windPattern">
+        <option value="manual" selected>Manual</option>
+        <option value="seaBreeze">Brisa costera</option>
+        <option value="rotatingFront">Frente giratorio</option>
+        <option value="gustyWesterlies">Oeste racheado</option>
+        <option value="era5Sample">ERA5 diario</option>
+        <option value="era5Netcdf" disabled>ERA5 desde NetCDF</option>
+    </select>
+    <span id="netcdfStatus" aria-live="polite"></span>
 </div>
 
 <div id="map"></div>
 
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
-<script src="app.js"></script>
+<!-- Carga primero la copia local de netcdfjs; coloca el archivo real en src/lib/. -->
+<script src="lib/netcdfjs.min.js" defer></script>
+<!-- CDN de respaldo por si la copia local no está presente. -->
+<script src="https://cdn.jsdelivr.net/npm/netcdfjs@1.1.0/dist/netcdfjs.min.js" defer></script>
+<script src="app.js" defer></script>
 
 </body>
 </html>

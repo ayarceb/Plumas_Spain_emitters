@@ -22,6 +22,28 @@ function windField(angle) {
     return { ux: Math.cos(rad), uy: Math.sin(rad) };
 }
 
+const windPatterns = {
+    manual: () => null,
+    seaBreeze: t => {
+        // Oscilación suave inspirada en brisa marina con más intensidad a mediodía
+        const swing = 25 * Math.sin(t / 40);
+        const deg = 110 + swing;
+        const diurnal = Math.max(0, Math.sin(t / 55));
+        const speed = 0.9 + 0.25 * diurnal;
+        return { deg, speed };
+    },
+    rotatingFront: t => {
+        const deg = (t * 10) % 360;
+        const speed = 1.1 + 0.15 * Math.sin(t / 20);
+        return { deg, speed };
+    },
+    gustyWesterlies: t => {
+        const deg = 270 + 8 * Math.sin(t / 18) + 18 * Math.sin(t / 46);
+        const speed = 1 + 0.35 * Math.max(0, Math.sin(t / 14));
+        return { deg, speed };
+    }
+};
+
 async function main() {
     // Allow MapTiler topo+terrain if a key is available; otherwise fall back to
     // a keyless OpenTopoMap raster style so the map always loads.
@@ -106,7 +128,7 @@ async function main() {
     const particles = [];
     const N = 150;
     const dispersion = 0.04;
-    const speed = 0.035;
+    const baseSpeed = 0.035;
     const life = 140;
 
     sites.forEach(s => {
@@ -122,6 +144,7 @@ async function main() {
     });
 
     let windDeg = 90;
+    let speedFactor = 1;
 
     function realignParticles() {
         const w = windField(windDeg);
@@ -134,18 +157,54 @@ async function main() {
             const perpX = -w.uy;
             const perpY = w.ux;
 
-            p.lat = p.baseLat + w.uy * speed * p.age + perpY * lateral;
-            p.lon = p.baseLon + w.ux * speed * p.age + perpX * lateral;
+            p.lat = p.baseLat + w.uy * baseSpeed * speedFactor * p.age + perpY * lateral;
+            p.lon = p.baseLon + w.ux * baseSpeed * speedFactor * p.age + perpX * lateral;
         });
     }
 
     const windValueEl = document.getElementById("windValue");
-    windValueEl.innerText = windDeg + "°";
+    const windSlider = document.getElementById("windAngle");
+    const windPattern = document.getElementById("windPattern");
 
-    document.getElementById("windAngle").addEventListener("input", e => {
-        windDeg = parseInt(e.target.value);
-        windValueEl.innerText = windDeg + "°";
-        realignParticles();
+    function updateWindLabel() {
+        windValueEl.innerText = `${Math.round(windDeg)}° · ×${speedFactor.toFixed(2)}`;
+    }
+
+    function setWind(deg, { speed, realign } = {}) {
+        windDeg = deg;
+        if (typeof speed === "number") {
+            speedFactor = speed;
+        }
+        windSlider.value = Math.round(deg % 360);
+        updateWindLabel();
+        if (realign) {
+            realignParticles();
+        }
+    }
+
+    setWind(windDeg);
+
+    windSlider.addEventListener("input", e => {
+        if (windPattern.value !== "manual") {
+            windPattern.value = "manual";
+            windSlider.disabled = false;
+        }
+        setWind(parseInt(e.target.value, 10), { realign: true });
+    });
+
+    windPattern.addEventListener("change", () => {
+        const selected = windPattern.value;
+        windSlider.disabled = selected !== "manual";
+        if (selected === "manual") {
+            setWind(parseInt(windSlider.value, 10), { speed: 1, realign: true });
+            return;
+        }
+        const now = performance.now() / 1000;
+        const pattern = windPatterns[selected];
+        const next = pattern ? pattern(now) : null;
+        if (next) {
+            setWind(next.deg, { speed: next.speed, realign: true });
+        }
     });
 
     // Prebuild plume features so we can reuse the same objects and avoid per-frame allocations.
@@ -188,8 +247,8 @@ async function main() {
     function stepParticles() {
         const w = windField(windDeg);
         particles.forEach(p => {
-            p.lat += w.uy * speed + (Math.random() - 0.5) * dispersion;
-            p.lon += w.ux * speed + (Math.random() - 0.5) * dispersion;
+            p.lat += w.uy * baseSpeed * speedFactor + (Math.random() - 0.5) * dispersion;
+            p.lon += w.ux * baseSpeed * speedFactor + (Math.random() - 0.5) * dispersion;
 
             p.age++;
             if (p.age > life) {
@@ -213,6 +272,14 @@ async function main() {
     const updateInterval = 40; // ~25fps to reduce load while keeping motion smooth
 
     function animate(timestamp = 0) {
+        const pattern = windPatterns[windPattern.value];
+        if (pattern && windPattern.value !== "manual") {
+            const t = timestamp / 1000;
+            const next = pattern(t);
+            if (next) {
+                setWind(next.deg, { speed: next.speed });
+            }
+        }
         stepParticles();
         if (timestamp - lastUpdate >= updateInterval) {
             updatePlumes();

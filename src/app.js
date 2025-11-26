@@ -22,6 +22,142 @@ function windField(angle) {
     return { ux: Math.cos(rad), uy: Math.sin(rad) };
 }
 
+function bearingFromUV(u, v) {
+    // Invert the windField conversion: vector -> brújula (0° = norte)
+    const rad = Math.atan2(v, u);
+    return (rad * 180 / Math.PI - 90 + 360) % 360;
+}
+
+function findVariable(reader, candidates) {
+    const lc = name => name.toLowerCase();
+    const vars = reader.variables.map(v => v.name);
+    return candidates.find(c => vars.some(v => lc(v) === c || lc(v).includes(c)));
+}
+
+function getDimSize(reader, name) {
+    const dim = reader.dimensions.find(d => d.name === name);
+    return dim ? dim.size : null;
+}
+
+function nearestLevelIndex(reader, levelDimName) {
+    const levelVar = reader.variables.find(v => v.name === levelDimName);
+    if (!levelVar) return 0;
+    const data = reader.getDataVariable(levelDimName);
+    if (!data || !data.length) return 0;
+    let bestIdx = 0;
+    let bestDiff = Infinity;
+    for (let i = 0; i < data.length; i++) {
+        const diff = Math.abs(data[i] - 1);
+        if (diff < bestDiff) {
+            bestDiff = diff;
+            bestIdx = i;
+        }
+    }
+    return bestIdx;
+}
+
+function computeOffset(indices, sizes) {
+    let offset = 0;
+    for (let i = 0; i < sizes.length; i++) {
+        offset = offset * sizes[i] + indices[i];
+    }
+    return offset;
+}
+
+function averageUVAtTime(reader, uVar, vVar, timeIdx, levelIdx) {
+    const dimMap = Object.fromEntries(reader.dimensions.map(d => [d.name, d.size]));
+    const dims = uVar.dimensions;
+    const sizes = dims.map(name => dimMap[name]);
+    const timeAxis = dims.findIndex(d => /time/i.test(d));
+    const levelAxis = dims.findIndex(d => /lev/i.test(d) || /isob/i.test(d) || /hgt/i.test(d));
+
+    const idx = new Array(sizes.length).fill(0);
+    if (timeAxis >= 0) {
+        idx[timeAxis] = timeIdx;
+    }
+    if (levelAxis >= 0 && typeof levelIdx === "number") {
+        idx[levelAxis] = levelIdx;
+    }
+
+    const uData = reader.getDataVariable(uVar.name);
+    const vData = reader.getDataVariable(vVar.name);
+
+    let sumU = 0;
+    let sumV = 0;
+    let count = 0;
+
+    function walk(dim) {
+        if (dim === sizes.length) {
+            const off = computeOffset(idx, sizes);
+            sumU += uData[off];
+            sumV += vData[off];
+            count++;
+            return;
+        }
+        if (dim === timeAxis || dim === levelAxis) {
+            walk(dim + 1);
+            return;
+        }
+        for (let i = 0; i < sizes[dim]; i++) {
+            idx[dim] = i;
+            walk(dim + 1);
+        }
+    }
+
+    walk(0);
+    return count ? { u: sumU / count, v: sumV / count } : { u: 0, v: 0 };
+}
+
+async function loadNetcdfWindSeries() {
+    if (typeof netcdfjs === "undefined" || !netcdfjs.NetCDFReader) {
+        console.warn("NetCDF support not available; skipping NetCDF wind series.");
+        return null;
+    }
+    const netcdfPath = "../data/SAUPUNTA_ERA5-lvl-20210101t1300.nc";
+
+    try {
+        const response = await fetch(netcdfPath);
+        if (!response.ok) {
+            throw new Error(`NetCDF fetch failed (${netcdfPath}): ${response.status}`);
+        }
+        const buffer = await response.arrayBuffer();
+        const reader = new netcdfjs.NetCDFReader(new DataView(buffer));
+
+        const uName = findVariable(reader, ["u", "u10", "u_component"]); // prefer plain u/v first
+        const vName = findVariable(reader, ["v", "v10", "v_component"]);
+        if (!uName || !vName) {
+            console.warn("No se encontraron variables u/v en el NetCDF.");
+            return null;
+        }
+
+        const uVar = reader.variables.find(v => v.name === uName);
+        const vVar = reader.variables.find(v => v.name === vName);
+        const timeDim = (uVar.dimensions || []).find(d => /time/i.test(d));
+        const timeLen = timeDim ? getDimSize(reader, timeDim) : 1;
+        const levelDim = (uVar.dimensions || []).find(d => /lev/i.test(d) || /isob/i.test(d) || /hgt/i.test(d));
+        const levelIdx = levelDim ? nearestLevelIndex(reader, levelDim) : null;
+
+        const series = [];
+        for (let t = 0; t < timeLen; t++) {
+            const { u, v } = averageUVAtTime(reader, uVar, vVar, t, levelIdx);
+            const speed = Math.sqrt(u * u + v * v);
+            const deg = bearingFromUV(u, v);
+            series.push({ deg, speed });
+        }
+
+        const avgSpeed = series.reduce((acc, s) => acc + s.speed, 0) / Math.max(1, series.length);
+        const normalized = series.map(s => ({
+            deg: s.deg,
+            speed: Math.max(0.1, s.speed / (avgSpeed || 1))
+        }));
+
+        return normalized;
+    } catch (err) {
+        console.warn("No se pudo cargar el viento NetCDF:", err);
+        return null;
+    }
+}
+
 const era5Series = [
     { deg: 290, speed: 0.82 },
     { deg: 286, speed: 0.88 },
@@ -90,6 +226,8 @@ const windPatterns = {
         return { deg, speed };
     }
 };
+
+const netcdfSeriesPromise = loadNetcdfWindSeries();
 
 async function main() {
     // Allow MapTiler topo+terrain if a key is available; otherwise fall back to
@@ -212,10 +350,35 @@ async function main() {
     const windValueEl = document.getElementById("windValue");
     const windSlider = document.getElementById("windAngle");
     const windPattern = document.getElementById("windPattern");
+    const netcdfOption = windPattern.querySelector('option[value="era5Netcdf"]');
 
     function updateWindLabel() {
         windValueEl.innerText = `${Math.round(windDeg)}° · ×${speedFactor.toFixed(2)}`;
     }
+
+    netcdfSeriesPromise.then(series => {
+        if (series && series.length) {
+            windPatterns.era5Netcdf = t => {
+                const virtualHour = (t / 30) % series.length;
+                const i0 = Math.floor(virtualHour);
+                const i1 = (i0 + 1) % series.length;
+                const frac = virtualHour - i0;
+                const seg0 = series[i0];
+                const seg1 = series[i1];
+                return {
+                    deg: interpolateBearing(seg0.deg, seg1.deg, frac),
+                    speed: seg0.speed + (seg1.speed - seg0.speed) * frac
+                };
+            };
+            if (netcdfOption) {
+                netcdfOption.disabled = false;
+                netcdfOption.textContent = "ERA5 desde NetCDF";
+            }
+        } else if (netcdfOption) {
+            netcdfOption.disabled = true;
+            netcdfOption.textContent = "ERA5 NetCDF no disponible";
+        }
+    });
 
     function setWind(deg, { speed, realign } = {}) {
         windDeg = deg;

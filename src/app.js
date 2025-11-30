@@ -421,6 +421,7 @@ async function main() {
             : {
                   version: 8,
                   name: "OpenTopoMap",
+                  glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
                   sources: {
                       opentopo: {
                           type: "raster",
@@ -470,17 +471,19 @@ async function main() {
         emissionSeriesById = seriesMap || new Map();
     });
 
+    const plantsGeoJSON = {
+        type: "FeatureCollection",
+        features: sites.map(s => ({
+            type: "Feature",
+            id: s.id,
+            geometry: { type: "Point", coordinates: [s.lon, s.lat] },
+            properties: { ...s, emissionText: "…" }
+        }))
+    };
+
     map.addSource("plants", {
         type: "geojson",
-        data: {
-            type: "FeatureCollection",
-            features: sites.map(s => ({
-                type: "Feature",
-                id: s.id,
-                geometry: { type: "Point", coordinates: [s.lon, s.lat] },
-                properties: s
-            }))
-        }
+        data: plantsGeoJSON
     });
 
     map.addLayer({
@@ -500,7 +503,7 @@ async function main() {
         type: "symbol",
         source: "plants",
         layout: {
-            "text-field": ["coalesce", ["feature-state", "emissionText"], "…"],
+            "text-field": ["coalesce", ["get", "emissionText"], "…"],
             "text-size": 12,
             "text-offset": [0, 1.2],
             "text-anchor": "top",
@@ -743,12 +746,12 @@ async function main() {
     }
 
     function updateEmissionLabels(timestamp) {
-        const sourceId = "plants";
-        for (const site of sites) {
-            const val = siteEmissionValueAt(site.id, timestamp);
+        for (const feature of plantsGeoJSON.features) {
+            const val = siteEmissionValueAt(feature.id, timestamp);
             const text = Number.isFinite(val) ? val.toFixed(2) : "…";
-            map.setFeatureState({ source: sourceId, id: site.id }, { emissionText: text });
+            feature.properties.emissionText = text;
         }
+        map.getSource("plants").setData(plantsGeoJSON);
     }
 
     let lastUpdate = 0;

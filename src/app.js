@@ -69,7 +69,7 @@ async function loadEmissionSeriesForSite(siteId) {
             const loopSeconds = 120;
             const stepSeconds = Math.max(2.5, loopSeconds / normalized.length);
 
-            return { normalized, stepSeconds, times, sourcePath: res.url };
+            return { normalized, values, min, max, stepSeconds, times, sourcePath: res.url };
         } catch (err) {
             console.warn(`No se pudo cargar ${url}:`, err);
         }
@@ -476,6 +476,7 @@ async function main() {
             type: "FeatureCollection",
             features: sites.map(s => ({
                 type: "Feature",
+                id: s.id,
                 geometry: { type: "Point", coordinates: [s.lon, s.lat] },
                 properties: s
             }))
@@ -494,6 +495,24 @@ async function main() {
         }
     });
 
+    map.addLayer({
+        id: "plant-emissions",
+        type: "symbol",
+        source: "plants",
+        layout: {
+            "text-field": ["coalesce", ["feature-state", "emissionText"], "…"],
+            "text-size": 12,
+            "text-offset": [0, 1.2],
+            "text-anchor": "top",
+            "text-allow-overlap": true
+        },
+        paint: {
+            "text-color": "#1a4c2d",
+            "text-halo-color": "rgba(255,255,255,0.9)",
+            "text-halo-width": 1.2
+        }
+    });
+
     // Particle system
     const particles = [];
     const N = 150;
@@ -501,6 +520,7 @@ async function main() {
     const baseSpeed = 0.035;
     const life = 140;
     const siteIntensities = new Map();
+    const siteById = new Map(sites.map(s => [s.id, s]));
 
     sites.forEach(s => {
         for (let i = 0; i < N; i++) {
@@ -531,6 +551,25 @@ async function main() {
         const v0 = entry.normalized[i0];
         const v1 = entry.normalized[i1];
         return v0 + (v1 - v0) * frac;
+    }
+
+    function siteEmissionValueAt(siteId, timestampMs) {
+        const entry = emissionSeriesById.get(siteId);
+        if (entry && entry.values && entry.values.length) {
+            const pos = ((timestampMs - emissionClockStart) / 1000) / entry.stepSeconds;
+            const idx = ((pos % entry.values.length) + entry.values.length) % entry.values.length;
+            const i0 = Math.floor(idx);
+            const i1 = (i0 + 1) % entry.values.length;
+            const frac = idx - i0;
+            const v0 = entry.values[i0];
+            const v1 = entry.values[i1];
+            return v0 + (v1 - v0) * frac;
+        }
+        const site = siteById.get(siteId);
+        if (site && typeof site.annual === "number" && !Number.isNaN(site.annual)) {
+            return site.annual;
+        }
+        return null;
     }
 
     function realignParticles() {
@@ -703,6 +742,15 @@ async function main() {
         map.getSource("plumes").setData(plumeGeoJSON);
     }
 
+    function updateEmissionLabels(timestamp) {
+        const sourceId = "plants";
+        for (const site of sites) {
+            const val = siteEmissionValueAt(site.id, timestamp);
+            const text = Number.isFinite(val) ? val.toFixed(2) : "…";
+            map.setFeatureState({ source: sourceId, id: site.id }, { emissionText: text });
+        }
+    }
+
     let lastUpdate = 0;
     const updateInterval = 40; // ~25fps to reduce load while keeping motion smooth
 
@@ -722,6 +770,7 @@ async function main() {
         stepParticles(siteIntensities);
         if (timestamp - lastUpdate >= updateInterval) {
             updatePlumes();
+            updateEmissionLabels(timestamp);
             lastUpdate = timestamp;
         }
         requestAnimationFrame(animate);

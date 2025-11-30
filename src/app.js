@@ -16,17 +16,29 @@ async function loadCSV() {
     });
 }
 
-async function loadEmissionSeriesForSite(siteId) {
-    const candidates = [
+function csvBaseNamesForSite(site) {
+    const canonical = site.id || site.name || "";
+    const variations = new Set([
+        canonical,
+        (site.name || "").toUpperCase(),
+        canonical.replace(/\s+/g, "_").toUpperCase(),
+        canonical.replace(/[^A-Z0-9_]+/gi, "_").toUpperCase()
+    ]);
+    return Array.from(variations).filter(Boolean);
+}
+
+async function loadEmissionSeriesForSite(site) {
+    const bases = csvBaseNamesForSite(site);
+    const candidates = bases.flatMap(base => [
         // Repo root (when serving from src/)
-        `../CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`,
-        `./CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`,
-        `/CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`,
+        `../CSV_2021_TOP/${base}_NO2_timeseries_2km_Ktyear.csv`,
+        `./CSV_2021_TOP/${base}_NO2_timeseries_2km_Ktyear.csv`,
+        `/CSV_2021_TOP/${base}_NO2_timeseries_2km_Ktyear.csv`,
         // data/ subfolder (if CSV_2021_TOP is kept next to locations.csv)
-        `../data/CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`,
-        `./data/CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`,
-        `/data/CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`
-    ];
+        `../data/CSV_2021_TOP/${base}_NO2_timeseries_2km_Ktyear.csv`,
+        `./data/CSV_2021_TOP/${base}_NO2_timeseries_2km_Ktyear.csv`,
+        `/data/CSV_2021_TOP/${base}_NO2_timeseries_2km_Ktyear.csv`
+    ]);
 
     for (const url of candidates) {
         try {
@@ -57,19 +69,10 @@ async function loadEmissionSeriesForSite(siteId) {
 
             if (!values.length) continue;
 
-            const min = Math.min(...values);
-            const max = Math.max(...values);
-            const span = max - min;
-            const normalized = values.map(v => {
-                if (!span) return 1;
-                const scaled = (v - min) / span;
-                return 0.25 + scaled * 0.75; // evita que caiga a cero
-            });
-
             const loopSeconds = 120;
-            const stepSeconds = Math.max(2.5, loopSeconds / normalized.length);
+            const stepSeconds = Math.max(2.5, loopSeconds / values.length);
 
-            return { normalized, values, min, max, stepSeconds, times, sourcePath: res.url };
+            return { values, min: Math.min(...values), max: Math.max(...values), stepSeconds, times, sourcePath: res.url };
         } catch (err) {
             console.warn(`No se pudo cargar ${url}:`, err);
         }
@@ -84,7 +87,7 @@ async function loadEmissionSeriesForSites(sites, statusEl) {
     const foundPaths = new Set();
     const entries = await Promise.all(
         sites.map(async site => {
-            const series = await loadEmissionSeriesForSite(site.id);
+            const series = await loadEmissionSeriesForSite(site);
             if (series && series.sourcePath) {
                 foundPaths.add(series.sourcePath.replace(window.location.origin, ""));
             }
@@ -94,18 +97,41 @@ async function loadEmissionSeriesForSites(sites, statusEl) {
 
     const result = new Map();
     let found = 0;
+
+    const allValues = entries
+        .filter(e => e.series && Array.isArray(e.series.values) && e.series.values.length)
+        .flatMap(e => e.series.values);
+
+    // Calcular rango global para que la intensidad relativa entre plantas
+    // refleje sus magnitudes absolutas y no se normalice cada CSV por separado.
+    const globalMin = allValues.length ? Math.min(...allValues) : 0;
+    const globalMax = allValues.length ? Math.max(...allValues) : 1;
+    const globalSpan = globalMax - globalMin;
+
     entries.forEach(entry => {
-        if (entry.series) {
-            result.set(entry.id, entry.series);
+        if (entry.series && Array.isArray(entry.series.values)) {
+            const normalized = entry.series.values.map(v => {
+                if (!Number.isFinite(globalSpan) || !globalSpan) return 1;
+                const scaled = (v - globalMin) / globalSpan;
+                return 0.25 + scaled * 0.75;
+            });
+            result.set(entry.id, { ...entry.series, normalized, globalMin, globalMax });
             found++;
         }
     });
 
     if (statusEl) {
+        const missing = entries.filter(e => !e.series).map(e => e.id);
         if (found) {
             const paths = Array.from(foundPaths);
             const hint = paths.length ? ` desde ${paths.join(", ")}` : "";
-            statusEl.textContent = `Emisiones dinámicas cargadas (${found}/${sites.length})${hint}`;
+            const range = Number.isFinite(globalMin) && Number.isFinite(globalMax)
+                ? ` · rango global ${globalMin.toFixed(2)}–${globalMax.toFixed(2)}`
+                : "";
+            const missingHint = missing.length
+                ? ` · sin CSV: ${missing.slice(0, 4).join(", ")}${missing.length > 4 ? "…" : ""}`
+                : "";
+            statusEl.textContent = `Emisiones dinámicas cargadas (${found}/${sites.length})${hint}${range}${missingHint}`;
         } else {
             statusEl.textContent = "Emisiones dinámicas no encontradas (se usa anual). Coloca CSV_2021_TOP/ junto a data/ o en la raíz.";
         }

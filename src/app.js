@@ -18,9 +18,14 @@ async function loadCSV() {
 
 async function loadEmissionSeriesForSite(siteId) {
     const candidates = [
+        // Repo root (when serving from src/)
         `../CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`,
         `./CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`,
-        `/CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`
+        `/CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`,
+        // data/ subfolder (if CSV_2021_TOP is kept next to locations.csv)
+        `../data/CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`,
+        `./data/CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`,
+        `/data/CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`
     ];
 
     for (const url of candidates) {
@@ -64,7 +69,7 @@ async function loadEmissionSeriesForSite(siteId) {
             const loopSeconds = 120;
             const stepSeconds = Math.max(2.5, loopSeconds / normalized.length);
 
-            return { normalized, stepSeconds, times };
+            return { normalized, stepSeconds, times, sourcePath: res.url };
         } catch (err) {
             console.warn(`No se pudo cargar ${url}:`, err);
         }
@@ -76,9 +81,13 @@ async function loadEmissionSeriesForSite(siteId) {
 async function loadEmissionSeriesForSites(sites, statusEl) {
     if (statusEl) statusEl.textContent = "Cargando emisiones…";
 
+    const foundPaths = new Set();
     const entries = await Promise.all(
         sites.map(async site => {
             const series = await loadEmissionSeriesForSite(site.id);
+            if (series && series.sourcePath) {
+                foundPaths.add(series.sourcePath.replace(window.location.origin, ""));
+            }
             return { id: site.id, series };
         })
     );
@@ -93,9 +102,13 @@ async function loadEmissionSeriesForSites(sites, statusEl) {
     });
 
     if (statusEl) {
-        statusEl.textContent = found
-            ? `Emisiones dinámicas cargadas (${found}/${sites.length})`
-            : "Emisiones dinámicas no encontradas (se usa anual)";
+        if (found) {
+            const paths = Array.from(foundPaths);
+            const hint = paths.length ? ` desde ${paths.join(", ")}` : "";
+            statusEl.textContent = `Emisiones dinámicas cargadas (${found}/${sites.length})${hint}`;
+        } else {
+            statusEl.textContent = "Emisiones dinámicas no encontradas (se usa anual). Coloca CSV_2021_TOP/ junto a data/ o en la raíz.";
+        }
     }
 
     return result;

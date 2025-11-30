@@ -440,6 +440,16 @@ async function main() {
 
     await new Promise(r => map.on("load", r));
 
+    if (hasMaptilerKey) {
+        map.addSource("terrain-dem", {
+            type: "raster-dem",
+            url: `https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=${HaQgQYUfDut71HbV23Vr}`,
+            tileSize: 512,
+            maxzoom: 14
+        });
+        map.setTerrain({ source: "terrain-dem", exaggeration: 1.2 });
+    }
+
     const sites = await loadCSV();
     let emissionSeriesById = new Map();
     const emissionSeriesPromise = loadEmissionSeriesForSites(sites, emissionStatusEl);

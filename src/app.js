@@ -16,6 +16,91 @@ async function loadCSV() {
     });
 }
 
+async function loadEmissionSeriesForSite(siteId) {
+    const candidates = [
+        `../CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`,
+        `./CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`,
+        `/CSV_2021_TOP/${siteId}_NO2_timeseries_2km_Ktyear.csv`
+    ];
+
+    for (const url of candidates) {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) continue;
+            const text = await res.text();
+            const lines = text
+                .split(/\r?\n/)
+                .map(l => l.trim())
+                .filter(Boolean);
+
+            if (!lines.length) continue;
+
+            const dataRows = lines[0].toLowerCase().includes("no2") ? lines.slice(1) : lines;
+            const values = [];
+            const times = [];
+
+            for (const row of dataRows) {
+                const parts = row.split(/[;,\t ]+/);
+                if (parts.length < 2) continue;
+                const timeStr = parts[0];
+                const val = parseFloat(parts[1]);
+                if (Number.isNaN(val)) continue;
+                const parsedTime = Date.parse(timeStr);
+                if (!Number.isNaN(parsedTime)) times.push(parsedTime);
+                values.push(val);
+            }
+
+            if (!values.length) continue;
+
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const span = max - min;
+            const normalized = values.map(v => {
+                if (!span) return 1;
+                const scaled = (v - min) / span;
+                return 0.25 + scaled * 0.75; // evita que caiga a cero
+            });
+
+            const loopSeconds = 120;
+            const stepSeconds = Math.max(2.5, loopSeconds / normalized.length);
+
+            return { normalized, stepSeconds, times };
+        } catch (err) {
+            console.warn(`No se pudo cargar ${url}:`, err);
+        }
+    }
+
+    return null;
+}
+
+async function loadEmissionSeriesForSites(sites, statusEl) {
+    if (statusEl) statusEl.textContent = "Cargando emisiones…";
+
+    const entries = await Promise.all(
+        sites.map(async site => {
+            const series = await loadEmissionSeriesForSite(site.id);
+            return { id: site.id, series };
+        })
+    );
+
+    const result = new Map();
+    let found = 0;
+    entries.forEach(entry => {
+        if (entry.series) {
+            result.set(entry.id, entry.series);
+            found++;
+        }
+    });
+
+    if (statusEl) {
+        statusEl.textContent = found
+            ? `Emisiones dinámicas cargadas (${found}/${sites.length})`
+            : "Emisiones dinámicas no encontradas (se usa anual)";
+    }
+
+    return result;
+}
+
 function windField(angle) {
     // Convert compass degrees (0° = norte, 90° = este) a radianes
     const rad = (angle + 90) * Math.PI / 180;
@@ -309,6 +394,7 @@ const windPatterns = {
 
 const netcdfStatusEl = typeof document !== "undefined" ? document.getElementById("netcdfStatus") : null;
 const netcdfSeriesPromise = loadNetcdfWindSeries(netcdfStatusEl);
+const emissionStatusEl = typeof document !== "undefined" ? document.getElementById("emissionStatus") : null;
 
 async function main() {
     // Allow MapTiler topo+terrain if a key is available; otherwise fall back to
@@ -365,6 +451,11 @@ async function main() {
     }
 
     const sites = await loadCSV();
+    let emissionSeriesById = new Map();
+    const emissionSeriesPromise = loadEmissionSeriesForSites(sites, emissionStatusEl);
+    emissionSeriesPromise.then(seriesMap => {
+        emissionSeriesById = seriesMap || new Map();
+    });
 
     map.addSource("plants", {
         type: "geojson",
@@ -396,6 +487,7 @@ async function main() {
     const dispersion = 0.04;
     const baseSpeed = 0.035;
     const life = 140;
+    const siteIntensities = new Map();
 
     sites.forEach(s => {
         for (let i = 0; i < N; i++) {
@@ -404,13 +496,29 @@ async function main() {
                 lon: s.lon,
                 baseLat: s.lat,
                 baseLon: s.lon,
-                age: Math.random() * life
+                age: Math.random() * life,
+                siteId: s.id,
+                intensity: 1
             });
         }
     });
 
     let windDeg = 90;
     let speedFactor = 1;
+    const emissionClockStart = performance.now();
+
+    function siteIntensityAt(siteId, timestampMs) {
+        const entry = emissionSeriesById.get(siteId);
+        if (!entry || !entry.normalized.length) return 1;
+        const pos = ((timestampMs - emissionClockStart) / 1000) / entry.stepSeconds;
+        const idx = ((pos % entry.normalized.length) + entry.normalized.length) % entry.normalized.length;
+        const i0 = Math.floor(idx);
+        const i1 = (i0 + 1) % entry.normalized.length;
+        const frac = idx - i0;
+        const v0 = entry.normalized[i0];
+        const v1 = entry.normalized[i1];
+        return v0 + (v1 - v0) * frac;
+    }
 
     function realignParticles() {
         const w = windField(windDeg);
@@ -502,7 +610,7 @@ async function main() {
     const plumeFeatures = particles.map(p => ({
         type: "Feature",
         geometry: { type: "Point", coordinates: [p.lon, p.lat] },
-        properties: { age: p.age }
+        properties: { age: p.age, intensity: p.intensity }
     }));
 
     const plumeGeoJSON = {
@@ -520,24 +628,46 @@ async function main() {
         type: "circle",
         source: "plumes",
         paint: {
-            "circle-radius": 2,
-            "circle-color": "rgba(255, 128, 0, 0.78)",
-            "circle-opacity": [
+            "circle-radius": [
                 "interpolate",
                 ["linear"],
-                ["get", "age"],
+                ["get", "intensity"],
                 0,
-                0.95,
-                life,
-                0
+                1.2,
+                1,
+                2.6
+            ],
+            "circle-color": "rgba(255, 128, 0, 0.78)",
+            "circle-opacity": [
+                "*",
+                [
+                    "interpolate",
+                    ["linear"],
+                    ["get", "age"],
+                    0,
+                    0.95,
+                    life,
+                    0
+                ],
+                [
+                    "interpolate",
+                    ["linear"],
+                    ["get", "intensity"],
+                    0,
+                    0.25,
+                    1,
+                    1
+                ]
             ],
             "circle-blur": 0.15
         }
     });
 
-    function stepParticles() {
+    function stepParticles(siteIntensities) {
         const w = windField(windDeg);
         particles.forEach(p => {
+            const intensity = siteIntensities.get(p.siteId) ?? 1;
+            p.intensity = intensity;
             p.lat += w.uy * baseSpeed * speedFactor + (Math.random() - 0.5) * dispersion;
             p.lon += w.ux * baseSpeed * speedFactor + (Math.random() - 0.5) * dispersion;
 
@@ -555,6 +685,7 @@ async function main() {
             plumeFeatures[i].geometry.coordinates[0] = particles[i].lon;
             plumeFeatures[i].geometry.coordinates[1] = particles[i].lat;
             plumeFeatures[i].properties.age = particles[i].age;
+            plumeFeatures[i].properties.intensity = particles[i].intensity;
         }
         map.getSource("plumes").setData(plumeGeoJSON);
     }
@@ -571,7 +702,11 @@ async function main() {
                 setWind(next.deg, { speed: next.speed });
             }
         }
-        stepParticles();
+        siteIntensities.clear();
+        for (const site of sites) {
+            siteIntensities.set(site.id, siteIntensityAt(site.id, timestamp));
+        }
+        stepParticles(siteIntensities);
         if (timestamp - lastUpdate >= updateInterval) {
             updatePlumes();
             lastUpdate = timestamp;

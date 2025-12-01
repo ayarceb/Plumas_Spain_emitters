@@ -8,3 +8,10 @@ Tecnología:
 
 Despliegue:
 Funciona en GitHub Pages sin backend.
+
+## Datos de emisiones
+
+La carpeta `data/CSV_2021_TOP/` ya incluye series de ejemplo
+`*_NO2_timeseries_2km_Ktyear.csv` para cada planta (valores horarios
+2021-01-01). Si cuentas con las series originales, puedes sustituir estos
+archivos por los oficiales manteniendo el mismo esquema de nombres.

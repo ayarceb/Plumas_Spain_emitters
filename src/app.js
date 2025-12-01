@@ -72,7 +72,17 @@ async function loadEmissionSeriesForSite(site) {
             const loopSeconds = 120;
             const stepSeconds = Math.max(2.5, loopSeconds / values.length);
 
-            return { values, min: Math.min(...values), max: Math.max(...values), stepSeconds, times, sourcePath: res.url };
+            const mean = values.reduce((acc, v) => acc + v, 0) / values.length;
+
+            return {
+                values,
+                min: Math.min(...values),
+                max: Math.max(...values),
+                mean,
+                stepSeconds,
+                times,
+                sourcePath: res.url
+            };
         } catch (err) {
             console.warn(`No se pudo cargar ${url}:`, err);
         }
@@ -84,12 +94,13 @@ async function loadEmissionSeriesForSite(site) {
 async function loadEmissionSeriesForSites(sites, statusEl) {
     if (statusEl) statusEl.textContent = "Cargando emisiones…";
 
-    const foundPaths = new Set();
+    const pathBySite = new Map();
     const entries = await Promise.all(
         sites.map(async site => {
             const series = await loadEmissionSeriesForSite(site);
             if (series && series.sourcePath) {
-                foundPaths.add(series.sourcePath.replace(window.location.origin, ""));
+                const rel = series.sourcePath.replace(window.location.origin, "");
+                pathBySite.set(site.id, rel);
             }
             return { id: site.id, series };
         })
@@ -98,14 +109,20 @@ async function loadEmissionSeriesForSites(sites, statusEl) {
     const result = new Map();
     let found = 0;
 
-    const allValues = entries
-        .filter(e => e.series && Array.isArray(e.series.values) && e.series.values.length)
-        .flatMap(e => e.series.values);
-
-    // Calcular rango global para que la intensidad relativa entre plantas
-    // refleje sus magnitudes absolutas y no se normalice cada CSV por separado.
-    const globalMin = allValues.length ? Math.min(...allValues) : 0;
-    const globalMax = allValues.length ? Math.max(...allValues) : 1;
+    // Calcular rango global sin usar el spread para evitar desbordar el stack
+    // cuando los CSV contienen muchas filas.
+    let globalMin = Infinity;
+    let globalMax = -Infinity;
+    for (const entry of entries) {
+        if (entry.series && Array.isArray(entry.series.values)) {
+            for (const v of entry.series.values) {
+                if (v < globalMin) globalMin = v;
+                if (v > globalMax) globalMax = v;
+            }
+        }
+    }
+    if (!Number.isFinite(globalMin)) globalMin = 0;
+    if (!Number.isFinite(globalMax)) globalMax = 1;
     const globalSpan = globalMax - globalMin;
 
     entries.forEach(entry => {
@@ -123,19 +140,21 @@ async function loadEmissionSeriesForSites(sites, statusEl) {
     if (statusEl) {
         const missing = entries.filter(e => !e.series).map(e => e.id);
         if (found) {
-            const paths = Array.from(foundPaths);
-            const hint = paths.length ? ` desde ${paths.join(", ")}` : "";
+            const paths = Array.from(pathBySite.entries()).map(([id, p]) => `${id}:${p}`);
+            const pathText = paths.length ? ` desde ${paths.join(" | ")}` : "";
             const range = Number.isFinite(globalMin) && Number.isFinite(globalMax)
                 ? ` · rango global ${globalMin.toFixed(2)}–${globalMax.toFixed(2)}`
                 : "";
             const missingHint = missing.length
                 ? ` · sin CSV: ${missing.slice(0, 4).join(", ")}${missing.length > 4 ? "…" : ""}`
                 : "";
-            statusEl.textContent = `Emisiones dinámicas cargadas (${found}/${sites.length})${hint}${range}${missingHint}`;
+            statusEl.textContent = `Emisiones dinámicas cargadas (${found}/${sites.length})${pathText}${range}${missingHint}`;
         } else {
             statusEl.textContent = "Emisiones dinámicas no encontradas (se usa anual). Coloca CSV_2021_TOP/ junto a data/ o en la raíz.";
         }
     }
+
+    console.info("CSV de emisiones detectados", Object.fromEntries(pathBySite));
 
     return result;
 }

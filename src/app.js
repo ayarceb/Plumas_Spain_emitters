@@ -157,8 +157,9 @@ async function loadEmissionSeriesForSites(sites, statusEl) {
         if (entry.series && Array.isArray(entry.series.values)) {
             const normalized = entry.series.values.map(v => {
                 if (!Number.isFinite(globalSpan) || !globalSpan) return 1;
-                const scaled = (v - globalMin) / globalSpan;
-                return 0.25 + scaled * 0.75;
+                const scaled = Math.max(0, Math.min(1, (v - globalMin) / globalSpan));
+                const curved = Math.pow(scaled, 0.65); // realza diferencias entre sitios
+                return 0.08 + curved * 0.92;
             });
             result.set(entry.id, { ...entry.series, normalized, globalMin, globalMax });
             found++;
@@ -758,14 +759,28 @@ async function main() {
         paint: {
             "circle-radius": [
                 "interpolate",
+                ["exponential", 1.2],
+                ["get", "intensity"],
+                0,
+                0.8,
+                0.4,
+                2.4,
+                1,
+                6.5
+            ],
+            "circle-color": [
+                "interpolate",
                 ["linear"],
                 ["get", "intensity"],
                 0,
-                1.2,
+                "rgba(255, 214, 153, 0.65)",
+                0.35,
+                "rgba(255, 170, 102, 0.78)",
+                0.7,
+                "rgba(255, 128, 51, 0.88)",
                 1,
-                2.6
+                "rgba(255, 96, 0, 0.95)"
             ],
-            "circle-color": "rgba(255, 128, 0, 0.78)",
             "circle-opacity": [
                 "*",
                 [
@@ -782,12 +797,12 @@ async function main() {
                     ["linear"],
                     ["get", "intensity"],
                     0,
-                    0.25,
+                    0.35,
                     1,
-                    1
+                    1.25
                 ]
             ],
-            "circle-blur": 0.15
+            "circle-blur": 0.22
         }
     });
 

@@ -16,11 +16,39 @@ async function loadCSV() {
     });
 }
 
+const CSV_BASE_BY_SITE_ID = Object.freeze({
+    ATLANTIC_COPPER: "ATLANTIC_COPPER",
+    CELULOSAS_DE_ASTURIAS: "CELULOSAS_DE_ASTURIAS",
+    CEMENTOS_MOLINS: "CEMENTOS_MOLINS",
+    CEMENTOS_PORTLAND: "CEMENTOS_PORTLAND",
+    CEMEX_ESPANA: "CEMEX_ESPANA",
+    FINANCIERA_MADERERA: "FINANCIERA_MADERERA",
+    FINANCIERA_MADERERA_SA: "FINANCIERA_MADERERA_SA",
+    FORESTAL_DEL_ATLANTICO: "FORESTAL_DEL_ATLANTICO",
+    GUINCHOS: "GUINCHOS",
+    INTASA: "INTASA",
+    OLCESA_REFINERIA: "OLCESA_REFINERIA",
+    SAPA_EXTRUSION_SPAIN: "SAPA_EXTRUSION_SPAIN",
+    SAUGRANADILLA: "SAUGRANADILLA",
+    SAUCEUTA: "SACEUTA", // typo guard
+    SACEUTA: "SACEUTA",
+    SAUHAMON: "SAUHAMON",
+    SAULAS: "SAULAS",
+    SAUPUNTA: "SAUPUNTA",
+    SAMELILLA: "SAMELILLA",
+    SOLVAY: "SOLVAY",
+    VILLARROBLEDO: "VILLARROBLEDO"
+});
+
 function csvBaseNamesForSite(site) {
     const canonical = site.id || site.name || "";
+    const mappedBase = CSV_BASE_BY_SITE_ID[canonical];
     const variations = new Set([
+        mappedBase,
         canonical,
+        site.name,
         (site.name || "").toUpperCase(),
+        canonical.toUpperCase(),
         canonical.replace(/\s+/g, "_").toUpperCase(),
         canonical.replace(/[^A-Z0-9_]+/gi, "_").toUpperCase()
     ]);
@@ -150,7 +178,7 @@ async function loadEmissionSeriesForSites(sites, statusEl) {
                 : "";
             statusEl.textContent = `Emisiones dinámicas cargadas (${found}/${sites.length})${pathText}${range}${missingHint}`;
         } else {
-            statusEl.textContent = "Emisiones dinámicas no encontradas (se usa anual). Coloca CSV_2021_TOP/ junto a data/ o en la raíz.";
+            statusEl.textContent = "Emisiones dinámicas no encontradas (se usa anual). Falta la carpeta CSV_2021_TOP con los .csv específicos de cada planta junto a data/ o en la raíz.";
         }
     }
 
@@ -792,9 +820,15 @@ async function main() {
 
     function updateEmissionLabels(timestamp) {
         for (const feature of plantsGeoJSON.features) {
+            const entry = emissionSeriesById.get(feature.id);
             const val = siteEmissionValueAt(feature.id, timestamp);
-            const text = Number.isFinite(val) ? val.toFixed(2) : "…";
-            feature.properties.emissionText = text;
+            if (entry && entry.values && entry.values.length && Number.isFinite(val)) {
+                feature.properties.emissionText = val.toFixed(2);
+            } else if (Number.isFinite(val)) {
+                feature.properties.emissionText = `${val.toFixed(2)} anual`;
+            } else {
+                feature.properties.emissionText = "sin CSV";
+            }
         }
         map.getSource("plants").setData(plantsGeoJSON);
     }
